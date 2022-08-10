@@ -1,0 +1,120 @@
+trigger:
+  batch: true # batch changes so builds run one-at-a-time
+  branches:
+    include:
+    - main
+    - feature/*
+    - fix/*
+  paths:
+    include:
+    - forms
+
+pool:
+  vmImage: windows-latest
+
+variables:
+  isMain: $[eq(variables['Build.SourceBranch'], 'refs/heads/main')]
+  formsWorkingDirectory: $(System.DefaultWorkingDirectory)/function
+  terraformVersion: 0.14.7
+
+stages:
+  - stage: plan_dev
+    variables:
+      environment: dev
+    jobs:
+      - job: forms_function_eus
+        steps:
+          - template: ../templates/tf_plan.yml
+            parameters:
+              serviceConnectionName: 
+              tfStateFileKey: function
+              component: function
+              workingDirectory: $(formsWorkingDirectory)
+              region: eus
+
+  - stage: plan_uat
+    variables:
+      environment: uat
+    dependsOn: []
+    jobs:
+      - job: forms_function_eus
+        steps:
+          - template: ../templates/tf_plan.yml
+            parameters:
+              serviceConnectionName: sc-uat
+              tfStateFileKey: cl-forms-infra-function
+              component: function
+              workingDirectory: $(formsWorkingDirectory)
+              region: eus
+
+  - stage: plan_prod
+    variables:
+      environment: prod
+    dependsOn: []
+    jobs:
+      - job: forms_function_eus
+        steps:
+          - template: ../templates/tf_plan.yml
+            parameters:
+              serviceConnectionName: -sc-prod
+              tfStateFileKey: cl-forms-infra-function
+              component: function
+              workingDirectory: $(formsWorkingDirectory)
+              region: eus
+
+  - stage: apply_dev
+    condition: and(succeeded(), eq(variables.isMain, true))
+    variables:
+      environment: dev
+    dependsOn: [plan_dev] # Specify stage name where new job will be dependent on
+    jobs:
+      - deployment:
+        displayName: forms_function_eus
+        environment: dev # Create dev/prod/uat under: Azure DevOps -> Pipeline -> Environment
+        strategy:
+          runOnce:
+            deploy:
+              steps:
+                - template: ../templates/tf_apply.yml
+                  parameters:
+                    serviceConnectionName: sc-dev
+                    component: function
+                    region: eus
+
+  - stage: apply_uat
+    condition: and(succeeded(), eq(variables.isMain, true))
+    variables:
+      environment: uat
+    dependsOn: [plan_uat] # Specify stage name where new job will be dependent on
+    jobs:
+      - deployment:
+        displayName: forms_function_eus
+        environment: uat # Create dev/prod/uat under: Azure DevOps -> Pipeline -> Environment
+        strategy:
+          runOnce:
+            deploy:
+              steps:
+                - template: ../templates/tf_apply.yml
+                  parameters:
+                    serviceConnectionName: sc-uat
+                    component: function
+                    region: eus                 
+
+  - stage: apply_prod
+    condition: and(succeeded(), eq(variables.isMain, true))
+    variables:
+      environment: prod
+    dependsOn: [plan_prod] # Specify stage name where new job will be dependent on
+    jobs:
+      - deployment:
+        displayName: forms_function_eus
+        environment: prod # Create dev/prod under: Azure DevOps -> Pipeline -> Environment
+        strategy:
+          runOnce:
+            deploy:
+              steps:
+                - template: ../templates/tf_apply.yml
+                  parameters:
+                    serviceConnectionName: sc-prod
+                    component: function
+                    region: eus

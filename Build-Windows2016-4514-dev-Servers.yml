@@ -1,0 +1,313 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: Template to provision CATS 4514 EC2 instances for Applications (Slalom)
+
+Metadata:
+  "AWS::CloudFormation::Interface":
+    ParameterGroups:
+      - Label:
+          default: "Basic Configuration"
+        Parameters:
+          - VpcName
+          - KeyPairName
+          - Env
+          - Region
+      - Label:
+          default: "Application Configuration"
+        Parameters:
+          - AppId
+          - ApplicationNameec2
+          - EnvironmentType
+          - DataClassification
+      - Label:
+          default: "Instance 01 Configuration"
+        Parameters:
+          - ServerName01
+          - Server01SubnetId
+          - Ec2InstanceType01
+          - ServerResource01
+          - InstanceNumber01
+          - AttachedDriveSize
+
+Parameters:
+  InstanceNumber01:
+    Description: Instance Serial Number for server 01
+    Type: String
+    Default: "001"
+    AllowedPattern: ^[0-9]{3}$
+  AppId:
+    Type: String
+    Description: PlanIT application ID without APP- (ex. 4646); Using Slalom 31337 for testing
+    MinLength: 4
+    MaxLength: 4
+    AllowedPattern: ^[0-9]{4}$
+  ApplicationName:
+    Description: Name of the Application e.g. Navigate Classic
+    Type: String
+    Default: "9999"
+    MinLength: 4
+    MaxLength: 25
+  Env:
+    Description: Env for the server e.g. Dev, QA, UAT, PPR, Prod, DR
+    Type: String
+    Default: PPR
+    AllowedValues:
+      - Dev
+      - QA
+      - UAT
+      - PPR
+      - Prod
+      - DR
+  VpcName:
+    Type: String
+    Description: VPC Name to Attach the Security Group
+  Server01SubnetId:
+    Description: Subnet for the server 01
+    Type: AWS::EC2::Subnet::Id
+  ServerName01:
+    Description: Name of the server 01
+    Type: String
+    Default: a9999e1npsql001
+  ServerResource01:
+    Description: Three Chars for the resource e.g. web
+    Type: String
+    Default: web
+    MinLength: 3
+    MaxLength: 3
+    AllowedPattern: ^[a-z]{3}$
+  Ec2InstanceType01:
+    Type: String
+    Description: Type for EC2 Instance 01
+    AllowedValues:
+      - t3a.medium
+      - t3a.large
+      - c5.large
+      - c5.xlarge
+      - r5a.large
+      - r5a.xlarge
+      - r5a.2xlarge
+  EnvironmentType:
+    Type: String
+    Default: preprod
+    Description: Instance environment type
+    AllowedValues:
+      - prod
+      - nonprod
+      - preprod
+  DataClassification:
+    Type: String
+    Default: NonConfidential
+    Description: Instance data classification
+    AllowedValues:
+      - NonConfidential
+      - CompanyConfidential
+      - HighlyRestricted
+  AttachedDriveSize:
+    Type: String
+    Description: The Attached Drive size in GB.
+  HIGAccountParameter:
+    Type: String
+    Default: nonprod
+    AllowedValues:
+      - nonprod
+      - prod
+  AdditionalGPOs:
+    Type: String
+  AnsibleEnvironment:
+    Default: "prod"
+    Type: String
+    AllowedValues:
+      - prod
+      - qa
+      - dev
+  Envname:
+    Description: Environment name for CMDB
+    Default: "NON-PROD"
+    Type: String
+    AllowedValues:
+      - NON-PROD
+      - PROD
+  SecretName:
+    Type: String
+    Default: ansible-prod
+    AllowedValues:
+      - ansible-prod
+      - ansible-qa
+  OsType:
+    Default: "windows"
+    Type: String
+  Region:
+    Type: String
+    Default: us-east-1
+    AllowedValues:
+      - us-east-1
+
+Mappings:
+  myRegion:
+    us-east-1:
+      RegionCode:  "e1"
+    us-east-2:
+      RegionCode:  "e2"
+    us-west-1:
+      RegionCode:  "w1"
+    us-west-2:
+      RegionCode:  "w2"
+  EnvCodeMap:
+    NonProd:
+      EnvCode: "np"
+      PCode: "np"
+    Dev:
+      EnvCode: "dv"
+      PCode: "dv"
+    QA:
+      EnvCode: "qa"
+      PCode: "qa"
+    UAT:
+      EnvCode: "ut"
+      PCode: "ut"
+    PPR:
+      EnvCode: "pp"
+      PCode: "pp"
+    Prod:
+      EnvCode: "pd"
+      PCode: "pd"
+    DR:
+      EnvCode: "dr"
+      PCode: "dr"
+
+Resources:
+  ResourceGroup:
+    Type: "AWS::ResourceGroups::Group"
+    Properties:
+      Name: !Sub "APP-${AppId}-${Env}"
+      Description: !Sub "APP-${AppId} ${Env} instances"
+      ResourceQuery:
+        Query:
+          ResourceTypeFilters:
+            - "AWS::EC2::Instance"
+        Type: CLOUDFORMATION_STACK_1_0
+      Tags:
+        - Key: "hig-planit-appid"
+          Value: !Sub "APP-${AppId}${EnvironmentType}"
+        - Key: "hig-billing"
+          Value: !Sub "APP-${AppId}"
+        - Key: "hig-environment-type"
+          Value: !Ref EnvironmentType
+        - Key: "hig-data-classification"
+          Value: !Ref DataClassification
+
+  LaunchTemplate:
+    Type: "AWS::EC2::LaunchTemplate"
+    Properties:
+      LaunchTemplateName: !Sub "APP-${AppId}-${Env}"
+      LaunchTemplateData:
+        EbsOptimized: true
+        IamInstanceProfile: 
+          Arn: 
+            Fn::ImportValue:
+              InstanceProfile-ARN
+        ImageId: 
+          Fn::Transform:
+              Name: OrgSSM
+              Parameters:
+                Key: image/windows/us-east-1
+        #InstanceType: !Ref Ec2InstanceType01
+        InstanceInitiatedShutdownBehavior: stop
+        KeyName: !Sub "${VpcName}-key"
+        MetadataOptions:
+          HttpEndpoint: enabled
+          HttpPutResponseHopLimit: 1
+          HttpTokens: required # Require IMDSv2
+        Monitoring:
+          Enabled: false # disabled detailed monitoring
+        SecurityGroupIds:
+          - Fn::ImportValue:
+                !Sub "${VpcName}-sg"
+        TagSpecifications:
+          - ResourceType: instance
+            Tags:
+              - Key: "StackName"
+                Value: !Sub "${AWS::StackName}"
+              - Key: "hig-planit-appid"
+                Value: !Sub "APP-${AppId}${EnvironmentType}"
+              - Key: "hig-billing"
+                Value: !Sub "APP-${AppId}"
+              - Key: "hig-environment-type"
+                Value: !Ref EnvironmentType
+              - Key: "hig-data-classification"
+                Value: !Ref DataClassification
+              - Key: Owner
+                Value: HIG
+              - Key: "launch-resource"
+                Value: !Sub "APP-${AppId}-${Env}"
+          - ResourceType: volume
+            Tags:
+              - Key: "Name"
+                Value: !Join ["", ["Root Volume for a", !Sub '${AppId}', !FindInMap [myRegion, !Ref "AWS::Region", RegionCode], !FindInMap [EnvCodeMap, !Ref Env, EnvCode], !Sub '${ServerResource01}', !Ref InstanceNumber01]]
+              - Key: "hig-planit-appid"
+                Value: !Sub "APP-${AppId}${EnvironmentType}"
+              - Key: "hig-billing"
+                Value: !Sub "APP-${AppId}"
+              - Key: "hig-environment-type"
+                Value: !Ref EnvironmentType
+              - Key: "hig-data-classification"
+                Value: !Ref DataClassification
+              - Key: Owner
+                Value: HIG
+              - Key: "launch-resource"
+                Value: !Sub "APP-${AppId}-${Env}"
+
+  SecurityGroup01:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupName: !Sub SG_${AppId}${ServerResource01}
+      GroupDescription: "Security group for ${AppId} ${ServerResource01}"
+      VpcId:
+         Fn::ImportValue:
+             !Sub ${VpcName}
+      SecurityGroupIngress:
+      - IpProtocol: tcp
+        FromPort: 80
+        ToPort: 80
+        CidrIp: 10.0.0.0/8
+      Tags:
+        - Key: Name
+          Value: !Sub SG_${AppId}${ServerResource01}
+
+  EC2Instance01:
+    Type: "AWS::EC2::Instance"
+    DependsOn: SecurityGroup01
+    Properties:
+      LaunchTemplate:
+        LaunchTemplateId: !Ref LaunchTemplate
+        Version: !GetAtt LaunchTemplate.LatestVersionNumber
+      SubnetId: !Ref Server01SubnetId
+      InstanceType: !Ref Ec2InstanceType01
+      SecurityGroupIds:
+        - !Ref SecurityGroup01
+        - Fn::ImportValue:
+              !Sub "${VpcName}-sg"
+      Tags:
+        - Key: Hostname
+          Value: !Join ["", ["a", !Sub '${AppId}', !FindInMap [myRegion, !Ref "AWS::Region", RegionCode], !FindInMap [EnvCodeMap, !Ref Env, EnvCode], !Sub '${ServerResource01}', !Ref InstanceNumber01]]
+        - Key: Name
+          Value: !Sub "${ApplicationName}-${Env}-${ServerResource01}"
+
+  DataVolume01EC2:
+    Type: AWS::EC2::Volume
+    Properties:
+      Size: !Ref AttachedDriveSize
+      VolumeType: gp2
+      Encrypted: true
+      KmsKeyId: !Sub "alias/${VpcName}-cmk"
+      AvailabilityZone: !GetAtt EC2Instance01.AvailabilityZone
+      Tags:
+        - Key: Name
+          Value: !Join ["", ["Data Volume for a", !Sub '${AppId}', !FindInMap [myRegion, !Ref "AWS::Region", RegionCode], !FindInMap [EnvCodeMap, !Ref Env, EnvCode], !Sub '${ServerResource01}', !Ref InstanceNumber01]]
+        - Key: "InstanceName"
+          Value: !Ref EC2Instance01
+  AttacheVolume01:
+    Type: AWS::EC2::VolumeAttachment
+    Properties:
+      Device: /dev/xvdf
+      VolumeId: !Ref DataVolume01EC2
+      InstanceId: !Ref EC2Instance01

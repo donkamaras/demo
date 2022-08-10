@@ -1,0 +1,23 @@
+{
+  "Parameters":{
+      "InstanceNumber01" : "001",
+      "AppId" : "4514",
+      "ApplicationName" : "CATS",
+      "Env" : "Dev",
+      "VpcName" : "gsus-dev-net-01",
+      "Server01SubnetId" : "subnet-031197641034d8029",
+      "ServerName01" : "a4514e1dvweb001",
+      "ServerResource01" : "web",
+      "Ec2InstanceType01" : "t3a.medium",
+      "EnvironmentType" : "nonprod",
+      "AdditionalGPOs" : "",
+      "DataClassification" : "NonConfidential",
+      "AttachedDriveSize": "60",
+      "HIGAccountParameter" : "nonprod",
+      "AnsibleEnvironment" : "prod",
+      "Envname" : "NON-PROD",
+      "SecretName" : "ansible-prod",
+      "OsType" : "windows",
+      "Region" : "us-east-1"
+  }
+}
